@@ -1,0 +1,174 @@
+# Full Vanguard Assistant stack (M10).
+#
+# Brings up postgres + chroma + mcp + api + web in one ``docker compose up``.
+# Healthchecks gate ``depends_on`` so each service waits for its
+# prerequisites.  The api container's entrypoint runs alembic on boot, so a
+# fresh ``up`` populates the threads metadata schema automatically.
+#
+#   docker compose -f infra/docker-compose.yml up --build
+#
+# First-boot ingest (one-time — populates the chroma container with the
+# Vanguard knowledge base):
+#
+#   docker compose -f infra/docker-compose.yml run --rm ingest
+#
+# Cleanup:
+#
+#   docker compose -f infra/docker-compose.yml down -v   # also drops volumes
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vanguard-postgres
+    environment:
+      POSTGRES_USER: vg
+      POSTGRES_PASSWORD: vg
+      POSTGRES_DB: vanguard
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vg -d vanguard"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  chroma:
+    image: chromadb/chroma:0.5.20
+    container_name: vanguard-chroma
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      IS_PERSISTENT: "TRUE"
+      ANONYMIZED_TELEMETRY: "FALSE"
+    healthcheck:
+      # Chroma's image doesn't ship curl/wget/bash, but it does have Python.
+      # Hit the heartbeat endpoint via urllib so a 200 means "actually serving".
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/v1/heartbeat',timeout=3).status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  mcp:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.mcp
+    container_name: vanguard-mcp
+    # Load the project's .env (Azure / SendGrid / Jira / MCP token) — Compose
+    # otherwise looks for .env next to this compose file, which doesn't exist.
+    env_file:
+      - ../.env
+    ports:
+      - "8765:8765"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8765/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    container_name: vanguard-api
+    # Load Azure / SendGrid / Jira / LLM_* vars from the project's .env.
+    # Anything in `environment:` below OVERRIDES values from .env — used for
+    # the container-network-specific URLs and backend selectors.
+    env_file:
+      - ../.env
+    # Persistent volume for the container's own ``az login`` cache.  We
+    # do NOT bind-mount the host's ~/.azure because on Windows the MSAL
+    # refresh tokens are encrypted with DPAPI and a Linux container can't
+    # decrypt them.  Instead the container runs ``az login --use-device-code``
+    # once and the resulting Linux-format cache lives in this volume,
+    # surviving container restarts.  Requires AZURE_OPENAI_API_KEY to be
+    # blank in .env so the factory falls through to AzureCliCredential.
+    volumes:
+      - vanguard_az_cache:/root/.azure
+      - ../packages/eval/results:/app/packages/eval/results:ro
+    environment:
+      EVAL_RESULTS_DIR: /app/packages/eval/results
+      # Vector store — talk to the chroma service over HTTP, not embedded.
+      VECTORSTORE_BACKEND: chroma
+      CHROMA_MODE: http
+      CHROMA_URL: http://chroma:8000
+
+      # Checkpointer + app DB — both Postgres in compose.
+      CHECKPOINTER_BACKEND: postgres
+      POSTGRES_DSN: postgresql://vg:vg@postgres:5432/vanguard
+      APP_DB_DSN: postgresql+asyncpg://vg:vg@postgres:5432/vanguard
+
+      # MCP discovery — docker network DNS, not localhost.
+      MCP_URL: http://mcp:8765/mcp
+
+      # CORS — the web container hits the api via the nginx proxy on the
+      # same origin; this is mainly for direct-to-api dev access.
+      API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:5173}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chroma:
+        condition: service_healthy
+      mcp:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+    container_name: vanguard-web
+    ports:
+      - "5173:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    # Override the Dockerfile's healthcheck — busybox wget's exit codes are
+    # finicky.  --spider does a clean HEAD and exits 0 on 2xx.
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  # One-shot ingestion job — run with:
+  #   docker compose -f infra/docker-compose.yml run --rm ingest
+  # Mounts ``ingest/data`` from the host so the user can drop new PDFs in
+  # without rebuilding the image.
+  ingest:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    profiles: ["ingest"]
+    env_file:
+      - ../.env
+    environment:
+      # Override .env's embedded-mode defaults so ingest writes to the
+      # chroma service container, not a local .chroma directory.
+      VECTORSTORE_BACKEND: chroma
+      CHROMA_MODE: http
+      CHROMA_URL: http://chroma:8000
+    volumes:
+      - ../ingest/data:/app/ingest/data:ro
+    entrypoint: ["python", "ingest/scripts/ingest_kb.py", "--reset"]
+    depends_on:
+      chroma:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  chroma_data:
+  vanguard_az_cache:

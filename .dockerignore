@@ -1,0 +1,33 @@
+# Docker build context — keep it lean.
+.venv/
+.git/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+
+# Local data the containers shouldn't bake in.
+.checkpoints.sqlite
+.app_db.sqlite
+.chroma/
+ingest/data/
+
+# Web build artifacts and node deps — rebuilt inside the web image.
+apps/web/node_modules/
+apps/web/dist/
+apps/web/.vite/
+
+# Editor / OS noise
+.vscode/
+.idea/
+**/.DS_Store
+**/Thumbs.db
+
+# Env (never bake secrets into an image)
+.env
+.env.local
+
+# Logs
+*.log
+logs/

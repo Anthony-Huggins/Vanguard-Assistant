@@ -1,0 +1,37 @@
+Support Agent (RAG from the knowledge base)
+
+What is a fund expense ratio and why does it matter?
+How do I open a Vanguard account?
+What are the rules around required minimum distributions?
+What is Vanguard's policy on wire transfers?
+How does a Roth IRA conversion work?
+
+Research Agent (database + web search)
+
+What were the annual returns for V500 over the last 3 years?
+What is the expense ratio for the Total Stock Market ETF?
+Which Vanguard fund has the lowest expense ratio in the database?
+Show me all the equity funds and their net assets.
+
+Action Agent (triggers the confirmation prompt)
+
+Send an email to advisor@example.com with subject "Meeting request" and body "Can we meet Thursday at 2pm?"
+Open a support ticket with summary "Customer cannot log in" and description "User has been locked out since yesterday."
+
+Clarify route (ambiguous/off-topic)
+
+asdf qwerty zxcv
+Help me
+Do the thing
+What about the stuff from before?
+RAG fallback (question with no relevant chunks)
+
+What is the capital of France?
+Who won the Super Bowl last year?
+Explain quantum computing to me.
+
+Multi-turn memory (run these back to back in the same session)
+
+What is a target date fund?
+How does that compare to a money market fund?
+Which one would you recommend for someone retiring in 2050?

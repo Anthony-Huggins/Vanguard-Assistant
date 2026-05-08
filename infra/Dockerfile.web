@@ -1,0 +1,24 @@
+# Web container (M10).
+#
+# Multi-stage: ``builder`` runs ``npm ci && npm run build`` to produce
+# ``apps/web/dist/``; ``runtime`` is nginx:alpine serving the static build
+# and proxying ``/api/*`` to the api service.  No env var injection at
+# build time — the SPA uses relative URLs, which nginx routes.
+
+FROM node:20-alpine AS builder
+WORKDIR /web
+
+COPY apps/web/package.json apps/web/package-lock.json ./
+RUN npm install --no-audit --no-fund
+
+COPY apps/web/ ./
+RUN npm run build
+
+
+FROM nginx:alpine AS runtime
+COPY --from=builder /web/dist /usr/share/nginx/html
+COPY infra/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
+    CMD wget -qO- http://localhost/ >/dev/null 2>&1 || exit 1

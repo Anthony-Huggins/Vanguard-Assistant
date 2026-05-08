@@ -1,0 +1,68 @@
+# Vanguard Assistant API container (M10).
+#
+# Single-stage on python:3.11-slim.  Build context is the repo root so we
+# can copy both ``packages/agents/`` (the importable package) and
+# ``apps/api/`` (the FastAPI app entry point) in one shot.
+#
+# Build (from repo root):
+#     docker build -f infra/Dockerfile.api -t vanguard-api .
+
+# Pinned to bookworm so Microsoft's azure-cli apt repo works.  The default
+# ``python:3.11-slim`` tag tracks Debian Trixie now, which Microsoft hasn't
+# published packages for.
+FROM python:3.11-slim-bookworm
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Install:
+#   - curl (HEALTHCHECK probe)
+#   - azure-cli (so DefaultAzureCredential's AzureCliCredential can read the
+#     mounted ``~/.azure`` token cache without needing an OPENAI_API_KEY).
+#     Adds ~250 MB to the image; required by the option-2 path in the
+#     run-everything guide for users who can't or don't want to mint an
+#     API key in the Azure portal.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+         curl ca-certificates gnupg lsb-release \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -sLS https://packages.microsoft.com/keys/microsoft.asc \
+        | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg \
+    && chmod go+r /etc/apt/keyrings/microsoft.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/azure-cli/ $(lsb_release -cs) main" \
+        > /etc/apt/sources.list.d/azure-cli.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends azure-cli \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install the agents package first.  We copy the whole package dir (not just
+# pyproject.toml) because hatchling needs the ``vanguard_agents/`` source on
+# disk to do an editable install — splitting the layer doesn't actually help
+# layer caching here.
+COPY packages/agents/ packages/agents/
+RUN pip install -e "packages/agents[websearch]"
+
+# Pre-download the sentence-transformers embedder so the first request
+# doesn't pay the model-download tax on container start.
+RUN python -c "from sentence_transformers import SentenceTransformer; \
+    SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+
+# App source — small, changes most often.
+COPY apps/ apps/
+COPY data/ data/
+COPY ingest/ ingest/
+COPY migrations/ migrations/
+COPY alembic.ini ./
+COPY infra/api-entrypoint.sh /usr/local/bin/api-entrypoint.sh
+RUN chmod +x /usr/local/bin/api-entrypoint.sh
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=5 \
+    CMD curl -fsS http://localhost:8000/api/healthz || exit 1
+
+ENTRYPOINT ["api-entrypoint.sh"]

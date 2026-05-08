@@ -1,0 +1,33 @@
+# Dev-only Postgres for M9.
+#
+# M10's full compose (api / web / mcp / chroma / postgres) extends this with
+# additional services.  For now, just bring up Postgres so the API + CLI can
+# talk to it via ``CHECKPOINTER_BACKEND=postgres`` and a matching DSN.
+#
+#   docker compose -f infra/docker-compose.dev.yml up -d
+#   ./.venv/Scripts/python.exe -m alembic upgrade head
+#   CHECKPOINTER_BACKEND=postgres \
+#     POSTGRES_DSN=postgresql://vg:vg@localhost:5432/vanguard \
+#     APP_DB_DSN=postgresql+asyncpg://vg:vg@localhost:5432/vanguard \
+#     ./.venv/Scripts/python.exe -m uvicorn apps.api.main:app --port 8000
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vanguard-postgres-dev
+    environment:
+      POSTGRES_USER: vg
+      POSTGRES_PASSWORD: vg
+      POSTGRES_DB: vanguard
+    ports:
+      - "5432:5432"
+    volumes:
+      - vanguard_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vg -d vanguard"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  vanguard_postgres_data:

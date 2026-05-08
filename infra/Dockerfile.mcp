@@ -1,0 +1,34 @@
+# MCP tools server container (M10).
+#
+# Shares the agents package install with the API image even though the MCP
+# server only needs a small subset (FastMCP, httpx, the tool implementations
+# in apps/mcp_server/tools/).  Easier to keep one source of truth than to
+# split the package.
+
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY packages/agents/ packages/agents/
+RUN pip install -e packages/agents
+
+COPY apps/ apps/
+
+EXPOSE 8765
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
+    CMD curl -fsS http://localhost:8765/healthz || exit 1
+
+ENV MCP_HOST=0.0.0.0 \
+    MCP_PORT=8765
+
+CMD ["python", "apps/mcp_server/server.py"]

@@ -1,0 +1,103 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vanguard-agents"
+version = "0.1.0"
+description = "Multi-agent LangGraph runtime for the Vanguard Assistant project."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # LLM + orchestration
+    "langchain>=0.3.0",
+    "langchain-core>=0.3.0",
+    # Pin openai to 2.33.0 — 2.34/2.35 regressed Azure AAD credential
+    # handshake (the AzureOpenAI subclass stopped surfacing
+    # ``azure_ad_token`` to the base client's auth check, raising
+    # "Missing credentials" even with a valid token).  langchain-openai
+    # itself is fine across this range.  Re-pin upward when openai ships
+    # a fix.
+    "langchain-openai>=0.2.0",
+    "openai==2.33.0",
+    "langgraph>=0.2.50",
+    "langgraph-checkpoint-sqlite>=2.0.0",
+    "langgraph-checkpoint-postgres>=2.0.0",
+    "aiosqlite>=0.19.0",
+    # Used directly by AsyncPostgresSaver and indirectly by SQLAlchemy when
+    # the API's app DB DSN points at Postgres (M9+).
+    "psycopg[binary,pool]>=3.2.0",
+    "asyncpg>=0.29.0",
+    "sqlalchemy[asyncio]>=2.0.0",
+    "alembic>=1.13.0",
+
+    # Vector store + embeddings
+    "langchain-chroma>=0.1.4",
+    "langchain-huggingface>=0.1.0",
+    "sentence-transformers>=3.0.0",
+    "chromadb>=0.5.0",
+
+    # Document ingestion (text-only PDFs for now; pdfplumber added in M14)
+    "langchain-community>=0.3.0",
+    "langchain-text-splitters>=0.3.0",
+    "pypdf>=4.0.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.0.0",
+
+    # MCP + HTTP services (also used by apps/api/ FastAPI app — M6)
+    "mcp>=1.0.0",
+    "langchain-mcp-adapters>=0.0.5",
+    "uvicorn[standard]>=0.30.0",
+    "starlette>=0.40.0",
+    "fastapi>=0.115.0",
+    # SSE response writer used by the streaming chat route (M8).
+    "sse-starlette>=2.1.0",
+    # HTTP client used by the SendGrid + Jira integrations in the MCP server
+    # and by the API's tests (httpx.AsyncClient + ASGITransport).
+    "httpx>=0.27.0",
+
+    # Validation + config
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.4.0",
+
+    # Resilience
+    "tenacity>=9.0.0",
+
+    # Azure auth (optional; only used if AZURE_OPENAI_API_KEY is empty)
+    "azure-identity>=1.17.0",
+
+    # Utilities
+    "python-dotenv>=1.0.0",
+    "structlog>=24.0.0",
+]
+
+[project.optional-dependencies]
+pinecone = ["langchain-pinecone>=0.2.0"]
+websearch = ["ddgs>=6.0.0"]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.6.0",
+    "mypy>=1.11.0",
+]
+
+[project.scripts]
+vanguard-cli = "vanguard_agents.cli:main"
+# The MCP server is invoked directly:
+#   ./.venv/Scripts/python.exe apps/mcp_server/server.py
+# (The agents package can't easily expose it as a console script because
+# apps/ is intentionally outside the package tree.)
+
+[tool.hatch.build.targets.wheel]
+packages = ["vanguard_agents"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

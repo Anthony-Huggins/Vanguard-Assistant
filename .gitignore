@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Env / secrets
+.env
+.env.local
+
+# Vector store data
+.chroma/
+*.sqlite3
+
+# Runtime SQLite databases (conversation checkpoints, app metadata).
+# data/fund_warehouse.sqlite is seed data and IS committed.
+*.sqlite
+!data/fund_warehouse.sqlite
+
+# Ingestion data
+ingest/data/*
+!ingest/data/.gitkeep
+
+# Ragas eval results (generated — don't commit run artifacts)
+packages/eval/results/
+packages/eval/_replay_cache.json
+
+# Logs
+*.log
+logs/
+
+# Node / web (apps/web — M7+)
+node_modules/
+dist/
+.next/
+.vite/
+*.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db
