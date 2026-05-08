@@ -1,6 +1,8 @@
 # Vanguard Assistant
 
 Multi-agent AI assistant combining LangGraph orchestration, RAG over a Vanguard document corpus, and MCP-exposed tools. Final project for the EY/Skillstorm Agentic AI class.
+Core Agent code in packages/agents
+
 
 **Agents:** coordinator → support (RAG) · research (web search + fund DB) · action (email / ticket) · clarify  
 **Stack:** Python 3.11 · LangGraph · FastAPI · React + Vite · ChromaDB · Postgres · Docker Compose
