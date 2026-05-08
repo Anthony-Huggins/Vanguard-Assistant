@@ -1,4 +1,7 @@
-# Vanguard Assistant - Core Agent code in packages/agents
+# Vanguard Assistant 
+#
+#Core Agent code in packages/agents
+#
 
 Multi-agent AI assistant combining LangGraph orchestration, RAG over a Vanguard document corpus, and MCP-exposed tools. Final project for the EY/Skillstorm Agentic AI class.
 
